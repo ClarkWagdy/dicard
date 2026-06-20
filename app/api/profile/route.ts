@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import UserModel from "@/models/User";
 import { ProfileUpdateSchema } from "@/lib/validations";
-import { ok, error, notFound, serverError, zodError, zodErrors, parseBody, getAuthenticatedUser, getUserByUsername } from "@/lib/api-helpers";
+import { ok, error, notFound, serverError, zodErrors, parseBody, getAuthenticatedUser, getUserByUsername } from "@/lib/api-helpers";
 
 export async function GET(req: NextRequest) {
   try {
