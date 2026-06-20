@@ -25,8 +25,7 @@ const SEED_USERS = [
     role: "owner" as const,
     email:    "ahmed@example.com",
     password: "Password123",
-    role: "owner",
-    profile: {
+     profile: {
       fullName:    "Ahmed Hassan",
       jobTitle:    "Senior Full-Stack Developer",
       companyName: "TechVentures Egypt",
@@ -60,8 +59,6 @@ const SEED_USERS = [
     role: "admin" as const,
     email:    "sara@example.com",
     password: "Password123",
-    role: "admin",
-    role: "owner",
     profile: {
       fullName:    "Sara Mahmoud",
       jobTitle:    "UX/UI Designer & Brand Consultant",
@@ -96,8 +93,7 @@ const SEED_USERS = [
     role: "user" as const,
     email:    "omar@example.com",
     password: "Password123",
-    role: "owner",
-    profile: {
+     profile: {
       fullName:    "Omar Khaled",
       jobTitle:    "Business Development Manager",
       companyName: "Growth Partners MENA",
