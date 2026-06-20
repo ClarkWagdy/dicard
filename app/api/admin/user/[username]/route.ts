@@ -6,17 +6,19 @@ import {
   ok, error, notFound, forbidden, serverError,
   requireRole, parseBody, zodErrors, getSession,
 } from "@/lib/api-helpers";
-
-type Params = { params: Promise<{ id: string }> };
-
+type Params = {
+  params: Promise<{ username: string }>;
+};
 // GET /api/admin/users/[id] — get single user detail
 export async function GET(_req: NextRequest, { params }: Params) {
+    const { username } = await params;
+
   try {
     await requireRole("admin");
     await connectDB();
 
-    const { id } = await params;
-    const user = await UserModel.findById(id).select("-password");
+    
+    const user = await UserModel.findById(username).select("-password");
     if (!user) return notFound("User");
 
     return ok({ user });
@@ -31,10 +33,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const session = await requireRole("owner");
     await connectDB();
 
-    const { id } = await params;
+    const { username } = await params;
 
     // Prevent owner from changing their own role
-    if (session.userId === id) {
+    if (session.username === username) {
       return error("You cannot change your own role", 400);
     }
 
@@ -50,9 +52,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     const user = await UserModel.findByIdAndUpdate(
-      id,
+      username,
       { $set: { role: parsed.data.role } },
-      { new: true }
+      { new: true },
     ).select("-password");
 
     if (!user) return notFound("User");
@@ -69,16 +71,16 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     const session = await requireRole("owner");
     await connectDB();
 
-    const { id } = await params;
+    const { username } = await params;
 
-    if (session.userId === id) {
+    if (session.username === username) {
       return error("You cannot deactivate your own account", 400);
     }
 
     const user = await UserModel.findByIdAndUpdate(
-      id,
+      username,
       { $set: { isActive: false } },
-      { new: true }
+      { new: true },
     ).select("-password");
 
     if (!user) return notFound("User");
