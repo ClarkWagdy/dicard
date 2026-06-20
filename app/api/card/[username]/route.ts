@@ -9,7 +9,7 @@ import { ok, notFound, serverError } from "@/lib/api-helpers";
 // Also records a page view asynchronously.
 export async function GET(
   req: NextRequest,
-  { params }: { params: { username: string } },
+  { params }: { params: Promise<{ username: string }> },
 ) {
   try {
     await connectDB();
@@ -55,7 +55,7 @@ export async function GET(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { username: string } },
+  { params }: { params: Promise<{ username: string }> },
 ) {
   try {
     await connectDB();

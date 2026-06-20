@@ -10,14 +10,16 @@ type Params = {
   params: Promise<{ username: string }>;
 };
 // GET /api/admin/users/[id] — get single user detail
-export async function GET(_req: NextRequest, { params }: Params) {
-    const { username } = await params;
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ username: string }> },
+) {
+  const { username } = await params;
 
   try {
     await requireRole("admin");
     await connectDB();
 
-    
     const user = await UserModel.findById(username).select("-password");
     if (!user) return notFound("User");
 
