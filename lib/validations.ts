@@ -110,9 +110,8 @@ export type RegisterWithRoleInput = z.infer<typeof RegisterWithRoleSchema>;
 // ─── Role update (admin/owner only) ──────────────────────────────────────────
 
 export const UpdateRoleSchema = z.object({
-  role: z.enum(["owner", "admin", "user"], {
-    required_error: "Role is required",
-    invalid_type_error: "Role must be owner, admin, or user",
+  role: z.enum(["owner", "admin", "user"]).refine((val) => !!val, {
+    message: "Role is required",
   }),
 });
 
