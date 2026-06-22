@@ -23,6 +23,7 @@ export async function GET(
 
     const user = await UserModel.findByUsername(username);
     if (!user) return notFound("Card");
+    const userData = user.toObject();
 
     void (async () => {
       try {
@@ -43,11 +44,15 @@ export async function GET(
     })();
 
     return ok({
-      username: user.username,
-      profile: user.profile,
-      social: user.social,
-      business: user.business,
-      appearance: user.appearance,
+      username: userData.username,
+      profile: userData.profile,
+      social: userData.social ?? {},
+      business: {
+        ...userData.business,
+        services: userData.business?.services ?? [],
+        portfolioImages: userData.business?.portfolioImages ?? [],
+      },
+      appearance: userData.appearance,
     });
   } catch (err) {
     return serverError(err);
