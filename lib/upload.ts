@@ -1,7 +1,7 @@
 import "server-only";
-import fs from "fs/promises";
-import path from "path";
+import { put, del } from "@vercel/blob";
 import { randomUUID } from "crypto";
+import path from "path";
 
 export interface UploadResult {
   url: string;
@@ -9,29 +9,28 @@ export interface UploadResult {
   bytes: number;
 }
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
-
-// Ensure upload directory exists
-async function ensureDir() {
-  await fs.mkdir(UPLOAD_DIR, { recursive: true });
-}
-
 export async function uploadToLocal(
   buffer: Buffer,
   originalName: string,
   folder: string = "profiles",
 ): Promise<UploadResult> {
-  await ensureDir();
-
   const ext = path.extname(originalName) || ".jpg";
   const filename = `${folder}-${randomUUID()}${ext}`;
-  const folderPath = path.join(UPLOAD_DIR, folder);
+  const pathname = `${folder}/${filename}`;
 
-  await fs.mkdir(folderPath, { recursive: true });
-  await fs.writeFile(path.join(folderPath, filename), buffer);
+  const blob = await put(pathname, buffer, {
+    access: "public",
+    contentType: originalName.endsWith(".png")
+      ? "image/png"
+      : originalName.endsWith(".webp")
+        ? "image/webp"
+        : originalName.endsWith(".gif")
+          ? "image/gif"
+          : "image/jpeg",
+  });
 
   return {
-    url: `/uploads/${folder}/${filename}`, // served as static file
+    url: blob.url,
     filename,
     bytes: buffer.length,
   };
@@ -39,9 +38,8 @@ export async function uploadToLocal(
 
 export async function deleteFromLocal(url: string): Promise<void> {
   try {
-    const relativePath = url.replace(/^\/uploads\//, "");
-    await fs.unlink(path.join(UPLOAD_DIR, relativePath));
+    await del(url);
   } catch {
-    // Silently ignore if file doesn't exist
+    // Silently ignore
   }
 }
