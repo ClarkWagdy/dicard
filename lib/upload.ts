@@ -19,7 +19,7 @@ export async function uploadToLocal(
   const pathname = `${folder}/${filename}`;
 
   const blob = await put(pathname, buffer, {
-    access: "public",
+    access: "private",
     contentType: originalName.endsWith(".png")
       ? "image/png"
       : originalName.endsWith(".webp")
