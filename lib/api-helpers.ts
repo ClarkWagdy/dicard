@@ -7,9 +7,39 @@ import UserModel, { IUser, UserRole, hasRole } from "@/models/User";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ApiSession {
-  userId:   string;
+  userId: string;
   username: string;
-  role:     UserRole;
+  role: UserRole;
+}
+
+// ─── HTTP Error Classes ───────────────────────────────────────────────────────
+
+export class HttpError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+export class UnauthorizedError extends HttpError {
+  constructor(message = "Unauthorized") {
+    super(401, message);
+  }
+}
+
+export class ForbiddenError extends HttpError {
+  constructor(message = "Forbidden: insufficient permissions") {
+    super(403, message);
+  }
+}
+
+export class NotFoundError extends HttpError {
+  constructor(resource = "Resource") {
+    super(404, `${resource} not found`);
+  }
 }
 
 // ─── Standard Responses ───────────────────────────────────────────────────────
@@ -39,6 +69,10 @@ export function notFound(resource = "Resource") {
 }
 
 export function serverError(err: unknown) {
+  // ✅ HttpError → return its own status code, not 500
+  if (err instanceof HttpError) {
+    return error(err.message, err.statusCode);
+  }
   console.error("API Error:", err);
   const message = err instanceof Error ? err.message : "Internal server error";
   return error(message, 500);
@@ -46,20 +80,20 @@ export function serverError(err: unknown) {
 
 /** Return all Zod validation errors as field → message list */
 export function zodErrors(zodErr: import("zod").ZodError) {
-  const fields = zodErr.issues.map((e:any) => ({
-    field:   e.path.join(".") || "root",
+  const fields = zodErr.issues.map((e: any) => ({
+    field: e.path.join(".") || "root",
     message: e.message,
   }));
   return NextResponse.json(
     { success: false, error: "Validation failed", fields },
-    { status: 400 }
+    { status: 400 },
   );
 }
 
 /** Parse JSON body safely — returns null on empty/invalid JSON */
 export async function parseBody<T>(req: NextRequest): Promise<T | null> {
   try {
-    return await req.json() as T;
+    return (await req.json()) as T;
   } catch {
     return null;
   }
@@ -71,23 +105,23 @@ export async function getSession(): Promise<ApiSession | null> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return null;
   return {
-    userId:   session.user.id,
+    userId: session.user.id,
     username: session.user.username,
-    role:     session.user.role,
+    role: session.user.role,
   };
 }
 
-/** Require login — throws 401 if not authenticated */
+/** Require login — throws UnauthorizedError if not authenticated */
 export async function requireAuth(): Promise<ApiSession> {
   const session = await getSession();
-  if (!session) throw unauthorized();
+  if (!session) throw new UnauthorizedError();
   return session;
 }
 
-/** Require a minimum role — throws 401/403 accordingly */
+/** Require a minimum role — throws UnauthorizedError/ForbiddenError accordingly */
 export async function requireRole(required: UserRole): Promise<ApiSession> {
   const session = await requireAuth();
-  if (!hasRole(session.role, required)) throw forbidden();
+  if (!hasRole(session.role, required)) throw new ForbiddenError();
   return session;
 }
 
@@ -98,12 +132,14 @@ export async function getAuthenticatedUser(): Promise<IUser> {
   const session = await requireAuth();
   await connectDB();
   const user = await UserModel.findById(session.userId);
-  if (!user) throw unauthorized();
+  if (!user) throw new UnauthorizedError("User not found");
   return user;
 }
 
 /** Get a user by username (public) */
-export async function getUserByUsername(username: string): Promise<IUser | null> {
+export async function getUserByUsername(
+  username: string,
+): Promise<IUser | null> {
   await connectDB();
   return UserModel.findByUsername(username);
 }

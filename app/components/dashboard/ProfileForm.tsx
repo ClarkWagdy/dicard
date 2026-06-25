@@ -39,7 +39,7 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const handleSave = () => onSave({ ...data, profile: form });
 
   return (
-    <div className="max-w-2xl flex flex-col gap-6">
+    <div className="max-w-2xl flex flex-col gap-6" >
       <h3 style={{ color: "white", fontSize: "1rem", fontWeight: 600 }}>
         Profile Settings
       </h3>
