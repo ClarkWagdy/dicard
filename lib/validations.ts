@@ -77,12 +77,12 @@ export type SocialUpdateInput = z.infer<typeof SocialUpdateSchema>;
 // ─── Business ─────────────────────────────────────────────────────────────────
 
 export const BusinessUpdateSchema = z.object({
-  logo:            z.string().optional().or(z.literal("")),
-  description:     z.string().max(1000).optional().or(z.literal("")),
-  services:        z.array(z.string().max(50)).max(20).default([]),
-  catalogPdf:      z.string().optional().or(z.literal("")),
-  brochurePdf:     z.string().optional().or(z.literal("")),
-  portfolioImages: z.array(z.string()).max(20).default([]),
+  logo: z.string().optional().or(z.literal("")),
+  description: z.string().max(1000).optional().or(z.literal("")),
+  services: z.array(z.string().max(50)).max(20).optional(),
+  catalogPdf: z.string().optional().or(z.literal("")),
+  brochurePdf: z.string().optional().or(z.literal("")),
+  portfolioImages: z.array(z.string()).max(20).optional(),
 });
 
 export type BusinessUpdateInput = z.infer<typeof BusinessUpdateSchema>;
