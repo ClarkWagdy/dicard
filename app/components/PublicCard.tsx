@@ -400,7 +400,7 @@ export default function PublicCard({ username }: Props) {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch(`/api/card/${username}`);
+        const res = await fetch(`/api/card/${username}`, { cache: "no-store" });
         if (res.status === 404) {
           setError("Card not found");
           return;

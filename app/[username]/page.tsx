@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 import PublicCard from "../components/PublicCard";
 import { use } from "react";
 
