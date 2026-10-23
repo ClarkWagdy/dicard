@@ -1,45 +1,78 @@
-import { useState } from 'react';
-import { Upload, Camera, User } from "lucide-react";
-import { CardData } from '../mockData';
-import { toast } from 'sonner';
+import { useEffect, useState } from "react";
+import { Upload, Camera } from "lucide-react";
+import { CardData } from "../mockData";
+import { toast } from "sonner";
 
 interface Props {
   data: CardData;
-  onSave: (data: CardData) => void;
+  onSave: (data: CardData) => void | Promise<void>;
 }
 
 export default function ProfileForm({ data, onSave }: Props) {
   const [form, setForm] = useState(data.profile);
-const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
-const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  // لما الداتا تتحمل/تتحدث من الـ DB (بعد الحفظ مثلاً) حدّث الفورم
+  useEffect(() => {
+    setForm(data.profile);
+  }, [data.profile]);
 
-  setUploading(true);
-  try {
-    const formData = new FormData();
-    formData.append("file", file);
+  // ارجع اعرض الصورة لما الرابط يتغير (كان بيتخفى للأبد بعد أول error)
+  useEffect(() => {
+    setImgError(false);
+  }, [form.photo]);
 
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    });
+  const set = (key: string, value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
-    const { url } = await res.json();
-    set("photo", url);
-  } catch {
-    toast.error("Upload failed");
-  } finally {
-    setUploading(false);
-  }
-};
-  const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const handleSave = () => onSave({ ...data, profile: form });
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json().catch(() => ({}));
+
+      // قبل كده لو الرد فيه error كان بيتحفظ photo = undefined
+      if (!res.ok || !json?.url) {
+        throw new Error(json?.error ?? "Upload failed");
+      }
+      set("photo", json.url);
+      toast.success("Image uploaded. Click Save Changes to apply it.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = ""; // يسمح برفع نفس الملف تاني
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      await onSave({ ...data, profile: form });
+      toast.success("Profile saved");
+    } catch (err) {
+      console.error("Profile save failed:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to save profile",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="max-w-2xl flex flex-col gap-6" >
+    <div className="max-w-2xl flex flex-col gap-6">
       <h3 style={{ color: "white", fontSize: "1rem", fontWeight: 600 }}>
         Profile Settings
       </h3>
@@ -66,18 +99,26 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         <div className="flex items-center gap-5">
           {/* Avatar preview */}
           <div className="relative shrink-0 group">
-            <img
-              src={form.photo || ""}
-              alt=""
-              className="w-20 h-20 rounded-2xl object-cover"
-              style={{
-                border: "2px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.05)",
-              }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
+            {form.photo && !imgError ? (
+              <img
+                src={form.photo}
+                alt=""
+                className="w-20 h-20 rounded-2xl object-cover"
+                style={{
+                  border: "2px solid rgba(255,255,255,0.1)",
+                  background: "rgba(255,255,255,0.05)",
+                }}
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <div
+                className="w-20 h-20 rounded-2xl"
+                style={{
+                  border: "2px solid rgba(255,255,255,0.1)",
+                  background: "rgba(255,255,255,0.05)",
+                }}
+              />
+            )}
             {/* Hover overlay */}
             <label
               className="absolute inset-0 rounded-2xl flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
@@ -166,7 +207,7 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       </Section>
 
       {/* Contact */}
-      <Section label="Contact Info " >
+      <Section label="Contact Info">
         <Field
           label="Mobile"
           value={form.mobile}
@@ -212,7 +253,8 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
       <button
         onClick={handleSave}
-        className="self-start px-8 py-3.5 rounded-2xl transition-all hover:scale-[1.02] active:scale-95"
+        disabled={saving || uploading}
+        className="self-start px-8 py-3.5 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         style={{
           background: "linear-gradient(135deg, #6366f1, #818cf8)",
           color: "white",
@@ -220,58 +262,121 @@ const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
           fontSize: "0.9rem",
         }}
       >
-        Save Changes
+        {saving ? "Saving..." : "Save Changes"}
       </button>
     </div>
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
+function Section({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="rounded-3xl p-6 flex flex-col gap-4" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      <label style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</label>
-      
+    <section
+      className="rounded-3xl p-6 flex flex-col gap-4"
+      style={{
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.07)",
+      }}
+    >
+      <label
+        style={{
+          color: "rgba(255,255,255,0.5)",
+          fontSize: "0.75rem",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+        }}
+      >
+        {label}
+      </label>
       {children}
     </section>
   );
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value?: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   return (
     <div>
-      <label style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 500, display: 'block', marginBottom: '0.4rem' }}>{label}</label>
+      <label
+        style={{
+          color: "rgba(255,255,255,0.5)",
+          fontSize: "0.8rem",
+          fontWeight: 500,
+          display: "block",
+          marginBottom: "0.4rem",
+        }}
+      >
+        {label}
+      </label>
       <input
         type="text"
-        value={value}
+        value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         className="w-full px-4 py-3 rounded-2xl outline-none transition-all"
         style={{
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          color: 'white',
-          fontSize: '0.875rem',
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          color: "white",
+          fontSize: "0.875rem",
         }}
       />
     </div>
   );
 }
 
-function TextArea({ label, value, onChange, rows, placeholder }: { label: string; value: string; onChange: (v: string) => void; rows?: number; placeholder?: string }) {
+function TextArea({
+  label,
+  value,
+  onChange,
+  rows,
+  placeholder,
+}: {
+  label: string;
+  value?: string;
+  onChange: (v: string) => void;
+  rows?: number;
+  placeholder?: string;
+}) {
   return (
     <div>
-      <label style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', fontWeight: 500, display: 'block', marginBottom: '0.4rem' }}>{label}</label>
+      <label
+        style={{
+          color: "rgba(255,255,255,0.5)",
+          fontSize: "0.8rem",
+          fontWeight: 500,
+          display: "block",
+          marginBottom: "0.4rem",
+        }}
+      >
+        {label}
+      </label>
       <textarea
-        value={value}
+        value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         rows={rows || 3}
         placeholder={placeholder}
         className="w-full px-4 py-3 rounded-2xl outline-none transition-all resize-none"
         style={{
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          color: 'white',
-          fontSize: '0.875rem',
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          color: "white",
+          fontSize: "0.875rem",
         }}
       />
     </div>
