@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Eye, EyeOff, Zap, ShieldCheck } from 'lucide-react';
-import { db, setSessionUser, UserRecord } from './multiUserStore';
-import { signIn } from 'next-auth/react';
+ import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useSession } from "next-auth/react";
 

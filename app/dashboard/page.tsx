@@ -1,9 +1,9 @@
 "use client";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Dashboard from "./Dashboard";
-import { db } from "../components/multiUserStore";
+import { clearSession } from "../components/multiUserStore";
 import { CardData } from "../components/mockData";
 
 function getTheme(theme: "light" | "dark") {
@@ -19,31 +19,74 @@ function getTheme(theme: "light" | "dark") {
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
-  const [user, setUser] = useState<any>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    if (status === "authenticated" && session?.user) {
-      fetch(`/api/card/${session?.user.username}`)
-        .then((res) => res.json())
-        .then((data) => {
-          setUser(data.data);
-          console.log("Fetched card data:", data);
-        })
-        .catch((err) => {
-          console.error("Error fetching card data:", err);
-        });
+  const [card, setCard] = useState<CardData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const username = (session?.user as { username?: string } | undefined)
+    ?.username;
+
+  // ── Load the card from MongoDB (never cached) ───────────────────────────────
+  const loadCard = useCallback(async () => {
+    if (!username) return;
+    try {
+      setError(null);
+      const res = await fetch(`/api/card/${username}`, { cache: "no-store" });
+      if (!res.ok) {
+        setError("Failed to load your card");
+        return;
+      }
+      const json = await res.json();
+      setCard(json.data as CardData);
+    } catch (err) {
+      console.error("Error fetching card data:", err);
+      setError("Network error");
     }
+  }, [username]);
+
+  useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/login");
+      return;
     }
-  }, [status, router]);
+    if (status === "authenticated") loadCard();
+  }, [status, router, loadCard]);
 
-  // Derive theme as soon as we have data (or fall back to dark while loading)
-  const rawTheme = (user?.appearance?.theme as "light" | "dark") ?? "dark";
-  const t = getTheme(rawTheme);
+  // ── Save to MongoDB (بدل db.update اللي كان بيكتب في localStorage) ──────────
+  const handleUpdate = async (next: CardData) => {
+    if (!username) return;
 
-  if (status === "loading" || (status === "authenticated" && !user)) {
+    const res = await fetch(`/api/card/${username}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        profile: next.profile,
+        social: next.social,
+        business: next.business,
+        appearance: next.appearance,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("Save failed:", err);
+      throw new Error(err?.error ?? "Save failed");
+    }
+
+    // أعد التحميل من الـ DB عشان تعرض اللي اتحفظ فعلاً
+    await loadCard();
+  };
+
+  const handleLogout = async () => {
+    clearSession(); // تنضيف أي داتا قديمة في localStorage
+    await signOut({ callbackUrl: "/login" });
+  };
+
+  const t = getTheme((card?.appearance?.theme as "light" | "dark") ?? "dark");
+
+  if (status === "loading" || (status === "authenticated" && !card && !error)) {
     return (
       <div
         className="min-h-screen flex items-center justify-center"
@@ -60,17 +103,37 @@ export default function DashboardPage() {
     );
   }
 
-  if (!session?.user) return null;
+  if (!session?.user || !username) return null;
+
+  if (error || !card) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: t.bgPage }}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <p style={{ color: t.textMuted, fontSize: "0.875rem" }}>
+            {error ?? "Card not found"}
+          </p>
+          <button
+            onClick={loadCard}
+            className="px-5 py-2.5 rounded-xl"
+            style={{ background: "#6366f1", color: "white", fontWeight: 600 }}
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Dashboard
-      username={session.user.username}
-      data={user}
-      onUpdate={(card: CardData) => {
-        db.update(user.id, { card });
-      }}
-      onLogout={() => router.push("/login")}
-      onViewCard={() => router.push(`/${session.user.username}`)}
+      username={username}
+      data={card}
+      onUpdate={handleUpdate}
+      onLogout={handleLogout}
+      onViewCard={() => router.push(`/${username}`)}
     />
   );
 }

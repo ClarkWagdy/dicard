@@ -1,8 +1,8 @@
 // lib/session.ts
-import { db } from "@/app/components/multiUserStore";
 import { getIronSession, IronSession, SessionOptions } from "iron-session";
 import { cookies } from "next/headers";
-
+import connectDB from "@/lib/mongodb";
+import UserModel from "@/models/User";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface SessionUser {
@@ -62,16 +62,12 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const session = await getSession();
   if (!session.user?.id) return null;
 
-  const record = db.getById(session.user.id);
-
-  // Don't call session.destroy() here: cookies can't be modified while
-  // rendering a Server Component. Returning null is enough; the stale
-  // cookie is cleared on the next logout/login.
+  await connectDB();
+  const record = await UserModel.findById(session.user.id).lean();
   if (!record) return null;
 
-  // Pick only what the app needs, so password hashes etc. never leak.
   return {
-    id: record.id,
+    id: record._id.toString(),
     username: record.username,
     email: record.email,
     role: record.role,
