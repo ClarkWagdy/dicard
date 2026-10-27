@@ -41,6 +41,7 @@ export default function App() {
   // ── Page title (بديل generateMetadata اللي مش بيشتغل في client component) ──
   useEffect(() => {
     if (username) document.title = `${username} - One Card`;
+    
   }, [username]);
 
   // ── Load the card from MongoDB (always fresh) ───────────────────────────────

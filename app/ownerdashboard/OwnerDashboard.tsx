@@ -84,6 +84,7 @@ export default function OwnerDashboard({
   const [loading, setLoading] = useState(true);
 
   const safeUsers = users ?? [];
+  console.log(currentUser)
   const myPhoto = currentUser.card?.profile?.photo || DEFAULT_AVATAR;
 
   // الـ owner بيشوف نفسه بس
@@ -354,7 +355,7 @@ export default function OwnerDashboard({
         >
           <div className="flex items-center gap-3 mb-3">
             <img
-              src={myPhoto}
+              src={me.card?.profile?.photo || DEFAULT_AVATAR}
               alt=""
               className="w-9 h-9 rounded-xl object-cover"
               style={{ border: "2px solid rgba(99,102,241,0.4)" }}
