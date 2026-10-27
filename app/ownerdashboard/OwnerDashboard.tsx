@@ -22,14 +22,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import {
-  UserRecord,
-  Role,
-  Status,
-  canManageUsers,
-  canDeleteUsers,
-  canChangeRoles,
-} from "../components/multiUserStore";
+import { UserRecord, Role, Status } from "../components/multiUserStore";
 import UserFormModal from "../components/UserFormModal";
 import UserCardEditor from "../components/UserCardEditor";
 
@@ -75,6 +68,9 @@ export default function OwnerDashboard({
   onLogout,
   onViewCard,
 }: Props) {
+  // ── الصلاحيات: الأدمن بس هو اللي يشوف ويدير النظام كله ──────────────────────
+  const isAdmin = currentUser.role === "admin";
+
   const [panel, setPanel] = useState<Panel>("overview");
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [search, setSearch] = useState("");
@@ -89,6 +85,9 @@ export default function OwnerDashboard({
 
   const safeUsers = users ?? [];
   const myPhoto = currentUser.card?.profile?.photo || DEFAULT_AVATAR;
+
+  // الـ owner بيشوف نفسه بس
+  const me = safeUsers.find((u) => u.id === currentUser.id) ?? currentUser;
 
   // ── Load users from MongoDB ─────────────────────────────────────────────────
   const reload = async () => {
@@ -125,7 +124,10 @@ export default function OwnerDashboard({
           },
         },
       }));
-      setUsers(list);
+
+      // الأدمن: الكل | غير كده: حسابه هو بس
+      // (ده فلترة للعرض فقط — لازم الـ API نفسه يفلتر برضه، شوف الملاحظة تحت)
+      setUsers(isAdmin ? list : list.filter((u) => u.id === currentUser.id));
     } catch (err) {
       console.error("Failed to load users:", err);
       toast.error(err instanceof Error ? err.message : "Failed to load users");
@@ -163,8 +165,7 @@ export default function OwnerDashboard({
 
   // ── Actions (كلها على الـ API) ───────────────────────────────────────────────
   const handleDelete = async (user: UserRecord) => {
-    if (!canDeleteUsers(currentUser.role))
-      return toast.error("Only owners can delete users");
+    if (!isAdmin) return toast.error("Only admins can delete users");
     if (user.id === currentUser.id)
       return toast.error("Cannot delete yourself");
     try {
@@ -178,7 +179,7 @@ export default function OwnerDashboard({
   };
 
   const handleToggleStatus = async (user: UserRecord) => {
-    if (!canManageUsers(currentUser.role)) return;
+    if (!isAdmin) return;
     if (user.id === currentUser.id)
       return toast.error("Cannot suspend yourself");
     const newStatus: Status = user.status === "active" ? "suspended" : "active";
@@ -198,10 +199,9 @@ export default function OwnerDashboard({
   };
 
   const handleRoleChange = async (user: UserRecord, role: Role) => {
-    if (!canChangeRoles(currentUser.role))
-      return toast.error("Only owners can change roles");
-    if (user.id === currentUser.id && role !== "owner")
-      return toast.error("Cannot demote yourself");
+    if (!isAdmin) return toast.error("Only admins can change roles");
+    if (user.id === currentUser.id)
+      return toast.error("Cannot change your own role");
     try {
       await request(`/api/admin/users/${user.id}`, "PUT", { role });
       await reload();
@@ -212,11 +212,13 @@ export default function OwnerDashboard({
     }
   };
 
-  // تعديل الكارت: بيروح لـ admin route لأن /api/card/[username] بيسمح لصاحب الكارت بس
+  // تعديل الكارت: الأدمن يعدّل أي كارت، والـ owner يعدّل كارته بس
   const handleSaveCard = async (
     userId: string,
     updatedCard: UserRecord["card"],
   ) => {
+    if (!isAdmin && userId !== currentUser.id)
+      return toast.error("You can only edit your own card");
     try {
       await request(`/api/admin/users/${userId}`, "PUT", {
         profile: updatedCard.profile,
@@ -253,6 +255,21 @@ export default function OwnerDashboard({
   };
 
   const accent = "#6366f1";
+
+  // عناصر السايد بار حسب الصلاحية
+  const navItems = isAdmin
+    ? ([
+        { id: "overview", label: "Overview", icon: BarChart3 },
+        { id: "users", label: "Users", icon: Users },
+        { id: "settings", label: "Settings", icon: Settings },
+      ] as const)
+    : ([
+        { id: "overview", label: "My Account", icon: UserIcon },
+        { id: "settings", label: "Settings", icon: Settings },
+      ] as const);
+
+  // حماية: لو مش أدمن ومحاول يفتح users، رجّعه للـ overview
+  const activePanel: Panel = !isAdmin && panel === "users" ? "overview" : panel;
 
   if (editCardUser) {
     return (
@@ -307,15 +324,9 @@ export default function OwnerDashboard({
           <span style={{ fontWeight: 700, fontSize: "1rem" }}>One.Card</span>
         </div>
 
-        {(
-          [
-            { id: "overview", label: "Overview", icon: BarChart3 },
-            { id: "users", label: "Users", icon: Users },
-            { id: "settings", label: "Settings", icon: Settings },
-          ] as const
-        ).map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
-          const active = panel === item.id;
+          const active = activePanel === item.id;
           return (
             <button
               key={item.id}
@@ -393,11 +404,15 @@ export default function OwnerDashboard({
           style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
         >
           <h2 style={{ fontWeight: 700, fontSize: "1.1rem" }}>
-            {panel === "overview"
-              ? "Dashboard Overview"
-              : panel === "users"
+            {activePanel === "overview"
+              ? isAdmin
+                ? "Dashboard Overview"
+                : "My Account"
+              : activePanel === "users"
                 ? "User Management"
-                : "System Settings"}
+                : isAdmin
+                  ? "System Settings"
+                  : "Account Settings"}
           </h2>
           <div className="flex items-center gap-2">
             <span
@@ -419,18 +434,19 @@ export default function OwnerDashboard({
         <main className="flex-1 p-6 overflow-auto">
           {loading && safeUsers.length === 0 ? (
             <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.875rem" }}>
-              Loading users...
+              Loading...
             </p>
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
-                key={panel}
+                key={activePanel}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                {panel === "overview" && (
+                {/* ── Admin: كل حاجة في النظام ── */}
+                {isAdmin && activePanel === "overview" && (
                   <OverviewPanel
                     stats={stats}
                     users={safeUsers}
@@ -439,7 +455,7 @@ export default function OwnerDashboard({
                     accent={accent}
                   />
                 )}
-                {panel === "users" && (
+                {isAdmin && activePanel === "users" && (
                   <UsersPanel
                     users={filtered}
                     allUsers={safeUsers}
@@ -462,7 +478,18 @@ export default function OwnerDashboard({
                     accent={accent}
                   />
                 )}
-                {panel === "settings" && (
+
+                {/* ── Owner: بياناته هو بس ── */}
+                {!isAdmin && activePanel === "overview" && (
+                  <MyAccountPanel
+                    me={me}
+                    onViewCard={onViewCard}
+                    onEditCard={() => setEditCardUser(me)}
+                    accent={accent}
+                  />
+                )}
+
+                {activePanel === "settings" && (
                   <SettingsPanel
                     currentUser={currentUser}
                     onSave={handleSaveSettings}
@@ -474,9 +501,9 @@ export default function OwnerDashboard({
         </main>
       </div>
 
-      {/* Add/Edit User Modal */}
+      {/* Add/Edit User Modal (أدمن بس) */}
       <AnimatePresence>
-        {(showAddModal || editUser) && (
+        {isAdmin && (showAddModal || editUser) && (
           <UserFormModal
             user={editUser}
             currentUser={currentUser}
@@ -489,9 +516,9 @@ export default function OwnerDashboard({
         )}
       </AnimatePresence>
 
-      {/* Delete Confirm */}
+      {/* Delete Confirm (أدمن بس) */}
       <AnimatePresence>
-        {deleteTarget && (
+        {isAdmin && deleteTarget && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -582,7 +609,129 @@ export default function OwnerDashboard({
   );
 }
 
-/* ── Overview Panel ── */
+/* ── My Account Panel (للـ owner: بياناته هو بس) ── */
+function MyAccountPanel({
+  me,
+  onViewCard,
+  onEditCard,
+  accent,
+}: {
+  me: UserRecord;
+  onViewCard: (u: UserRecord) => void;
+  onEditCard: () => void;
+  accent: string;
+}) {
+  const photo = me.card?.profile?.photo || DEFAULT_AVATAR;
+  const rows: { label: string; value: string }[] = [
+    { label: "Username", value: `@${me.username}` },
+    { label: "Email", value: me.email || "—" },
+    { label: "Role", value: me.role },
+    { label: "Status", value: me.status },
+    {
+      label: "Joined",
+      value: me.createdAt
+        ? new Date(me.createdAt).toLocaleDateString("en", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })
+        : "—",
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6 max-w-2xl">
+      <div
+        className="rounded-3xl p-6 flex flex-col gap-6"
+        style={{
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.07)",
+        }}
+      >
+        <div className="flex items-center gap-4">
+          <img
+            src={photo}
+            alt=""
+            className="w-16 h-16 rounded-2xl object-cover"
+            style={{ border: "2px solid rgba(99,102,241,0.4)" }}
+          />
+          <div className="min-w-0">
+            <p style={{ color: "white", fontWeight: 700, fontSize: "1.1rem" }}>
+              {me.card?.profile?.fullName || me.username}
+            </p>
+            <span
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full w-fit mt-1"
+              style={{
+                background: `${roleColors[me.role as Role]}15`,
+                color: roleColors[me.role as Role],
+                fontSize: "0.72rem",
+                fontWeight: 600,
+              }}
+            >
+              {roleIcons[me.role as Role]}
+              {me.role}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          {rows.map((r) => (
+            <div
+              key={r.label}
+              className="flex items-center justify-between gap-4"
+            >
+              <span
+                style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}
+              >
+                {r.label}
+              </span>
+              <span
+                style={{
+                  color: "rgba(255,255,255,0.85)",
+                  fontSize: "0.85rem",
+                  fontWeight: 500,
+                }}
+              >
+                {r.value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => onViewCard(me)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl"
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              color: "rgba(255,255,255,0.8)",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+            }}
+          >
+            <Eye size={16} />
+            View Card
+          </button>
+          <button
+            onClick={onEditCard}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all hover:scale-[1.02]"
+            style={{
+              background: `linear-gradient(135deg, ${accent}, #818cf8)`,
+              color: "white",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+            }}
+          >
+            <Edit2 size={16} />
+            Edit My Card
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Overview Panel (أدمن) ── */
 function OverviewPanel({ stats, users, onNavigate, accent }: any) {
   const recentUsers = [...users]
     .sort(
@@ -754,7 +903,7 @@ function OverviewPanel({ stats, users, onNavigate, accent }: any) {
   );
 }
 
-/* ── Users Panel ── */
+/* ── Users Panel (أدمن) ── */
 function UsersPanel({
   users,
   allUsers,
@@ -834,21 +983,19 @@ function UsersPanel({
           <option value="suspended">Suspended</option>
         </select>
 
-        {canManageUsers(currentUser.role) && (
-          <button
-            onClick={onAdd}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all hover:scale-[1.02]"
-            style={{
-              background: "linear-gradient(135deg, #6366f1, #818cf8)",
-              color: "white",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-            }}
-          >
-            <Plus size={16} />
-            Add User
-          </button>
-        )}
+        <button
+          onClick={onAdd}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl transition-all hover:scale-[1.02]"
+          style={{
+            background: "linear-gradient(135deg, #6366f1, #818cf8)",
+            color: "white",
+            fontSize: "0.875rem",
+            fontWeight: 600,
+          }}
+        >
+          <Plus size={16} />
+          Add User
+        </button>
       </div>
 
       <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.8rem" }}>
@@ -1031,95 +1178,82 @@ function UsersPanel({
                           onOpenMenu(null);
                         }}
                       />
-                      {canManageUsers(currentUser.role) && (
+                      <MenuItem
+                        icon={<Edit2 size={14} />}
+                        label="Edit Info"
+                        onClick={() => {
+                          onEdit(u);
+                          onOpenMenu(null);
+                        }}
+                      />
+                      <MenuItem
+                        icon={<Settings size={14} />}
+                        label="Edit Card"
+                        onClick={() => {
+                          onEditCard(u);
+                          onOpenMenu(null);
+                        }}
+                      />
+                      <MenuDivider />
+                      <MenuItem
+                        icon={
+                          u.status === "active" ? (
+                            <Ban size={14} />
+                          ) : (
+                            <CheckCircle size={14} />
+                          )
+                        }
+                        label={u.status === "active" ? "Suspend" : "Activate"}
+                        onClick={() => {
+                          onToggleStatus(u);
+                          onOpenMenu(null);
+                        }}
+                        color={u.status === "active" ? "#f59e0b" : "#4ade80"}
+                        disabled={u.id === currentUser.id}
+                      />
+                      {u.id !== currentUser.id && (
                         <>
-                          <MenuItem
-                            icon={<Edit2 size={14} />}
-                            label="Edit Info"
-                            onClick={() => {
-                              onEdit(u);
-                              onOpenMenu(null);
-                            }}
-                          />
-                          <MenuItem
-                            icon={<Settings size={14} />}
-                            label="Edit Card"
-                            onClick={() => {
-                              onEditCard(u);
-                              onOpenMenu(null);
-                            }}
-                          />
                           <MenuDivider />
-                          <MenuItem
-                            icon={
-                              u.status === "active" ? (
-                                <Ban size={14} />
-                              ) : (
-                                <CheckCircle size={14} />
-                              )
-                            }
-                            label={
-                              u.status === "active" ? "Suspend" : "Activate"
-                            }
-                            onClick={() => {
-                              onToggleStatus(u);
-                              onOpenMenu(null);
-                            }}
-                            color={
-                              u.status === "active" ? "#f59e0b" : "#4ade80"
-                            }
-                            disabled={u.id === currentUser.id}
-                          />
-                          {canChangeRoles(currentUser.role) && (
-                            <>
-                              <MenuDivider />
-                              <div className="px-3 py-1">
-                                <p
+                          <div className="px-3 py-1">
+                            <p
+                              style={{
+                                color: "rgba(255,255,255,0.3)",
+                                fontSize: "0.68rem",
+                                fontWeight: 600,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.08em",
+                                marginBottom: "0.3rem",
+                              }}
+                            >
+                              Change Role
+                            </p>
+                            {(["owner", "admin", "user"] as Role[])
+                              .filter((r) => r !== u.role)
+                              .map((r) => (
+                                <button
+                                  key={r}
+                                  onClick={() => onRoleChange(u, r)}
+                                  className="flex items-center gap-2 w-full px-2 py-1.5 rounded-xl hover:bg-white/5 transition-colors"
                                   style={{
-                                    color: "rgba(255,255,255,0.3)",
-                                    fontSize: "0.68rem",
-                                    fontWeight: 600,
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.08em",
-                                    marginBottom: "0.3rem",
+                                    color: roleColors[r],
+                                    fontSize: "0.8rem",
+                                    fontWeight: 500,
                                   }}
                                 >
-                                  Change Role
-                                </p>
-                                {(["owner", "admin", "user"] as Role[])
-                                  .filter((r) => r !== u.role)
-                                  .map((r) => (
-                                    <button
-                                      key={r}
-                                      onClick={() => onRoleChange(u, r)}
-                                      className="flex items-center gap-2 w-full px-2 py-1.5 rounded-xl hover:bg-white/5 transition-colors"
-                                      style={{
-                                        color: roleColors[r],
-                                        fontSize: "0.8rem",
-                                        fontWeight: 500,
-                                      }}
-                                    >
-                                      {roleIcons[r]} Set as {r}
-                                    </button>
-                                  ))}
-                              </div>
-                            </>
-                          )}
-                          {canDeleteUsers(currentUser.role) &&
-                            u.id !== currentUser.id && (
-                              <>
-                                <MenuDivider />
-                                <MenuItem
-                                  icon={<Trash2 size={14} />}
-                                  label="Delete User"
-                                  onClick={() => {
-                                    onDelete(u);
-                                    onOpenMenu(null);
-                                  }}
-                                  color="#f87171"
-                                />
-                              </>
-                            )}
+                                  {roleIcons[r]} Set as {r}
+                                </button>
+                              ))}
+                          </div>
+                          <MenuDivider />
+                          <MenuItem
+                            icon={<Trash2 size={14} />}
+                            label="Delete User"
+                            onClick={() => {
+                              onDelete(u);
+                              onOpenMenu(null);
+                            }}
+                            color="#f87171"
+                          />
                         </>
                       )}
                     </motion.div>
@@ -1186,8 +1320,6 @@ function SettingsPanel({
 
   return (
     <div className="max-w-lg flex flex-col gap-6">
-      <h3 style={{ color: "white", fontWeight: 600 }}>System Settings</h3>
-
       <div
         className="rounded-3xl p-6 flex flex-col gap-5"
         style={{
