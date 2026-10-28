@@ -72,14 +72,15 @@ export default function ProfileForm({ data, onSave }: Props) {
   };
 
   return (
-    <div className="max-w-2xl flex flex-col gap-6">
+    // w-full + min-w-0: عشان الفورم ياخد عرض الشاشة ومايتزقش برا جوه أي flex parent
+    <div className="w-full min-w-0 max-w-2xl flex flex-col gap-4 sm:gap-6">
       <h3 style={{ color: "white", fontSize: "1rem", fontWeight: 600 }}>
         Profile Settings
       </h3>
 
       {/* Photo */}
       <section
-        className="rounded-3xl p-6 flex flex-col gap-4"
+        className="rounded-3xl p-4 sm:p-6 flex flex-col gap-4 min-w-0"
         style={{
           background: "rgba(255,255,255,0.04)",
           border: "1px solid rgba(255,255,255,0.07)",
@@ -96,9 +97,10 @@ export default function ProfileForm({ data, onSave }: Props) {
         >
           Profile Photo
         </label>
-        <div className="flex items-center gap-5">
+        {/* على الموبايل: الصورة فوق والإدخال تحتها | من sm: جنب بعض */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5 min-w-0">
           {/* Avatar preview */}
-          <div className="relative shrink-0 group">
+          <div className="relative shrink-0 group w-fit">
             {form.photo && !imgError ? (
               <img
                 src={form.photo}
@@ -139,7 +141,7 @@ export default function ProfileForm({ data, onSave }: Props) {
           </div>
 
           {/* URL input + upload button */}
-          <div className="flex-1 flex flex-col gap-2">
+          <div className="flex-1 min-w-0 flex flex-col gap-2">
             <Field
               label="Photo URL"
               value={form.photo}
@@ -175,7 +177,8 @@ export default function ProfileForm({ data, onSave }: Props) {
               )}
             </label>
             <p style={{ color: "rgba(255,255,255,0.3)", fontSize: "0.75rem" }}>
-              Hover photo to change · or paste a URL above
+              <span className="hidden sm:inline">Hover photo to change · </span>
+              Paste a URL above or upload an image
             </p>
           </div>
         </div>
@@ -251,10 +254,11 @@ export default function ProfileForm({ data, onSave }: Props) {
         />
       </Section>
 
+      {/* الزرار بعرض كامل على الموبايل */}
       <button
         onClick={handleSave}
         disabled={saving || uploading}
-        className="self-start px-8 py-3.5 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full sm:w-auto sm:self-start px-8 py-3.5 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         style={{
           background: "linear-gradient(135deg, #6366f1, #818cf8)",
           color: "white",
@@ -277,7 +281,7 @@ function Section({
 }) {
   return (
     <section
-      className="rounded-3xl p-6 flex flex-col gap-4"
+      className="rounded-3xl p-4 sm:p-6 flex flex-col gap-4 min-w-0"
       style={{
         background: "rgba(255,255,255,0.04)",
         border: "1px solid rgba(255,255,255,0.07)",
@@ -311,7 +315,7 @@ function Field({
   placeholder?: string;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label
         style={{
           color: "rgba(255,255,255,0.5)",
@@ -328,12 +332,13 @@ function Field({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-4 py-3 rounded-2xl outline-none transition-all"
+        className="w-full min-w-0 px-4 py-3 rounded-2xl outline-none transition-all"
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.1)",
           color: "white",
-          fontSize: "0.875rem",
+          // 16px: عشان iOS Safari مايعملش zoom تلقائي لما تدوس على الحقل
+          fontSize: "1rem",
         }}
       />
     </div>
@@ -354,7 +359,7 @@ function TextArea({
   placeholder?: string;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label
         style={{
           color: "rgba(255,255,255,0.5)",
@@ -371,12 +376,12 @@ function TextArea({
         onChange={(e) => onChange(e.target.value)}
         rows={rows || 3}
         placeholder={placeholder}
-        className="w-full px-4 py-3 rounded-2xl outline-none transition-all resize-none"
+        className="w-full min-w-0 px-4 py-3 rounded-2xl outline-none transition-all resize-none"
         style={{
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.1)",
           color: "white",
-          fontSize: "0.875rem",
+          fontSize: "1rem",
         }}
       />
     </div>

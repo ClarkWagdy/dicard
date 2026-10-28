@@ -57,7 +57,7 @@ export default function UserCardEditor({ user, currentUser, onSave, onBack }: Pr
         </div>
       </header>
 
-      <div className="flex flex-1">
+      <div className="flex flex-1 md:flex-row flex-col">
         {/* Tabs sidebar */}
         <nav className="hidden md:flex flex-col gap-1 p-4 shrink-0" style={{ width: 200, borderRight: '1px solid rgba(255,255,255,0.07)' }}>
           {tabs.map((t) => {

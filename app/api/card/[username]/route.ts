@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-import { NextRequest } from "next/server";
+export const fetchCache = "force-no-store";
+import { NextRequest, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import connectDB from "@/lib/mongodb";
@@ -14,6 +15,33 @@ import {
   forbidden,
 } from "@/lib/api-helpers";
 
+// ── يمنع أي كاش (CDN / متصفح / back-forward cache) على الرد ───────────────────
+const NO_STORE = "no-store, no-cache, must-revalidate, max-age=0";
+
+function noStore<T extends Response>(res: T): T {
+  res.headers.set("Cache-Control", NO_STORE);
+  res.headers.set("CDN-Cache-Control", "no-store");
+  res.headers.set("Vercel-CDN-Cache-Control", "no-store");
+  res.headers.set("Pragma", "no-cache");
+  res.headers.set("Expires", "0");
+  return res;
+}
+
+// يبني شكل الكارت من الـ document اللي جاي من الداتا بيز
+function toCardPayload(userData: any) {
+  return {
+    username: userData.username,
+    profile: userData.profile,
+    social: userData.social ?? {},
+    business: {
+      ...userData.business,
+      services: userData.business?.services ?? [],
+      portfolioImages: userData.business?.portfolioImages ?? [],
+    },
+    appearance: userData.appearance,
+  };
+}
+
 // GET /api/card/[username]
 export async function GET(
   req: NextRequest,
@@ -23,17 +51,23 @@ export async function GET(
     await connectDB();
     const { username } = await params;
 
+    // دايمًا query جديدة على MongoDB في كل request
     const user = await UserModel.findByUsername(username);
-    if (!user) return notFound("Card");
+    if (!user) return noStore(notFound("Card"));
     const userData = user.toObject();
 
-    void (async () => {
+    // after(): بيضمن إن الـ analytics تخلص حتى بعد ما الرد يتبعت (serverless)
+    const userId = user._id.toString();
+    const referrer = req.headers.get("referer") || undefined;
+    const userAgent = req.headers.get("user-agent") || undefined;
+
+    after(async () => {
       try {
-        await PageView.recordView(user._id.toString(), user.username, {
-          referrer: req.headers.get("referer") || undefined,
-          userAgent: req.headers.get("user-agent") || undefined,
+        await PageView.recordView(userId, userData.username, {
+          referrer,
+          userAgent,
         });
-        await UserModel.findByIdAndUpdate(user._id, {
+        await UserModel.findByIdAndUpdate(userId, {
           $inc: {
             "analytics.totalViews": 1,
             "analytics.monthlyViews": 1,
@@ -43,21 +77,11 @@ export async function GET(
       } catch {
         // Silently ignore analytics errors
       }
-    })();
-
-    return ok({
-      username: userData.username,
-      profile: userData.profile,
-      social: userData.social ?? {},
-      business: {
-        ...userData.business,
-        services: userData.business?.services ?? [],
-        portfolioImages: userData.business?.portfolioImages ?? [],
-      },
-      appearance: userData.appearance,
     });
+
+    return noStore(ok(toCardPayload(userData)));
   } catch (err) {
-    return serverError(err);
+    return noStore(serverError(err));
   }
 }
 
@@ -72,18 +96,20 @@ export async function PUT(
 
     // ✅ Auth check — ensure the caller owns this card
     const session = await getServerSession(authOptions);
-    if (!session?.user) return unauthorized();
-    if (session.user.username !== username) return forbidden();
+    if (!session?.user) return noStore(unauthorized());
+    if (session.user.username !== username) return noStore(forbidden());
 
     const user = await UserModel.findByUsername(username);
-    if (!user) return notFound("Card");
+    if (!user) return noStore(notFound("Card"));
 
     // ✅ Guard: body must be a valid JSON object
     let body: Record<string, unknown>;
     try {
       body = await req.json();
     } catch {
-      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+      return noStore(
+        Response.json({ error: "Invalid JSON body" }, { status: 400 }),
+      );
     }
 
     const allowedFields = [
@@ -113,13 +139,11 @@ export async function PUT(
 
     // ✅ Guard: nothing valid to update
     if (Object.keys(updates).length === 0) {
-      return Response.json(
-        { error: "No valid fields to update" },
-        { status: 400 },
+      return noStore(
+        Response.json({ error: "No valid fields to update" }, { status: 400 }),
       );
     }
 
-    // ✅ Log the updates in dev so you can see what's being sent
     if (process.env.NODE_ENV === "development") {
       console.log("[PUT /api/card] updates:", JSON.stringify(updates, null, 2));
     }
@@ -127,20 +151,19 @@ export async function PUT(
     const result = await UserModel.findByIdAndUpdate(
       user._id,
       { $set: updates },
-      { new: true, runValidators: true }, // ✅ runValidators catches schema mismatches
+      { new: true, runValidators: true },
     );
 
-    // ✅ Verify the document was actually found and updated
     if (!result) {
-      return notFound("User");
+      return noStore(notFound("User"));
     }
 
-    return ok({ success: true });
+    // بنرجّع النسخة المحدّثة من الداتا بيز نفسها، فالـ client مش محتاج GET تاني
+    return noStore(ok({ success: true, ...toCardPayload(result.toObject()) }));
   } catch (err) {
-    // ✅ Log the real error in dev
     if (process.env.NODE_ENV === "development") {
       console.error("[PUT /api/card] error:", err);
     }
-    return serverError(err);
+    return noStore(serverError(err));
   }
 }
